@@ -156,14 +156,14 @@ void GridMapToPolygonConverter::processGridMap(const nav_msgs::msg::OccupancyGri
     }
 
     // Lưu ảnh nhị phân
-    cv::imwrite("/home/nguyen/binary_output.png", binary_image);
+    cv::imwrite("src/gridmap_to_polygon/images/binary_output.png", binary_image);
 
     // Lọc nhiễu
     binary_image = removeNoise(binary_image);
     RCLCPP_INFO(parentNode_->get_logger(), "Applied noise removal with min_area %d", min_area_);
 
     // Lưu ảnh sau lọc nhiễu
-    cv::imwrite("/home/nguyen/binary_filtered_output.png", binary_image);
+    cv::imwrite("src/gridmap_to_polygon/images/binary_filtered_output.png", binary_image);
 
     // Tìm contours với RETR_CCOMP để lấy cả outer và inner
     std::vector<std::vector<cv::Point>> contours;
@@ -232,5 +232,5 @@ void GridMapToPolygonConverter::processGridMap(const nav_msgs::msg::OccupancyGri
     }
 
     // Lưu ảnh với contours
-    cv::imwrite("/home/nguyen/polygon_contours_output.png", vis);
+    cv::imwrite("src/gridmap_to_polygon/images/polygon_contours_output.png", vis);
 }
