@@ -13,20 +13,55 @@ find_package(geometry_msgs REQUIRED)
 find_package(OpenCV REQUIRED) 
 find_package(yaml-cpp REQUIRED)
 
-include_directories( ${rclcpp_INCLUDE_DIRS} ${nav_msgs_INCLUDE_DIRS} ${geometry_msgs_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${YAML_CPP_INCLUDE_DIRS} )
+include_directories(
+  include
+)
 
+add_executable(standalone_node standalone_node.cpp)
 
-add_executable(gridmap_to_polygon gridmap_to_polygon.cpp)
+set(dependencies
+  ament_cmake
+  rclcpp
+  nav_msgs
+  geometry_msgs
+  OpenCV
+  yaml-cpp
+)
 
+add_library(gridmap_to_polygon SHARED
+  gridmap_to_polygon.cpp
+)
 
-ament_target_dependencies(gridmap_to_polygon rclcpp nav_msgs geometry_msgs OpenCV ) 
+ament_target_dependencies(gridmap_to_polygon 
+  ${dependencies}
+)
+
+ament_target_dependencies(standalone_node
+  ${dependencies}
+)
+
 target_link_libraries(gridmap_to_polygon ${YAML_CPP_LIBRARIES} )
 
+target_link_libraries(standalone_node
+  gridmap_to_polygon
+)
 
-install(TARGETS gridmap_to_polygon DESTINATION lib/${PROJECT_NAME} )
+install(TARGETS standalone_node DESTINATION lib/${PROJECT_NAME} )
 
 
 install(DIRECTORY config maps DESTINATION share/${PROJECT_NAME}/ )
+
+install(TARGETS gridmap_to_polygon
+  DESTINATION lib
+)
+
+install(DIRECTORY include/
+  DESTINATION include/
+)
+
+ament_export_include_directories(include)
+ament_export_libraries(gridmap_to_polygon)
+ament_export_dependencies(${dependencies})
 
 if(BUILD_TESTING) 
   find_package(ament_lint_auto REQUIRED) 
