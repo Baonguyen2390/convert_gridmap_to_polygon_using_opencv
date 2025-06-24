@@ -82,22 +82,9 @@ private:
         try {
             RCLCPP_INFO(this->get_logger(), "Loading map from YAML: %s", map_yaml_path_.c_str());
             YAML::Node config = YAML::LoadFile(map_yaml_path_);
-            if (!config["image"]) {
-                RCLCPP_ERROR(this->get_logger(), "YAML file missing 'image' field");
-                return;
-            }
-            if (!config["resolution"]) {
-                RCLCPP_ERROR(this->get_logger(), "YAML file missing 'resolution' field");
-                return;
-            }
-            if (!config["origin"]) {
-                RCLCPP_ERROR(this->get_logger(), "YAML file missing 'origin' field");
-                return;
-            }
             std::string image_path = config["image"].as<std::string>();
             float resolution = config["resolution"].as<float>();
             std::vector<double> origin = config["origin"].as<std::vector<double>>();
-            bool negate = config["negate"].as<bool>(false);
 
             cv::Mat pgm_image = cv::imread(map_pgm_path_, cv::IMREAD_GRAYSCALE);
             if (pgm_image.empty()) {
@@ -105,17 +92,6 @@ private:
                 return;
             }
 
-            // Chuyển ảnh thành nhị phân như trong image.py
-            cv::Mat binary_image = cv::Mat::zeros(pgm_image.size(), CV_8UC1);
-            if (negate) {
-                pgm_image = 255 - pgm_image;
-            }
-            cv::threshold(pgm_image, binary_image, 253, 255, cv::THRESH_BINARY); // Giá trị >= 254 -> 255
-
-            // Lưu ảnh nhị phân để debug
-            cv::imwrite("/home/nguyen/binary_output.png", binary_image);
-
-            // Tạo OccupancyGrid
             nav_msgs::msg::OccupancyGrid grid_map;
             grid_map.info.resolution = resolution;
             grid_map.info.width = pgm_image.cols;
@@ -126,8 +102,8 @@ private:
 
             for (int y = 0; y < pgm_image.rows; ++y) {
                 for (int x = 0; x < pgm_image.cols; ++x) {
-                    int value = binary_image.at<uchar>(pgm_image.rows - 1 - y, x);
-                    grid_map.data[y * pgm_image.cols + x] = value == 255 ? 100 : 0;
+                    int value = pgm_image.at<uchar>(pgm_image.rows - 1 - y, x);
+                    grid_map.data[y * pgm_image.cols + x] = (255 - value) * 100 / 255;
                 }
             }
 
@@ -160,12 +136,19 @@ private:
         // Chuyển grid map thành ảnh nhị phân
         cv::Mat binary_image(grid_map.info.height, grid_map.info.width, CV_8UC1);
         try {
-            for (size_t i = 0; i < grid_map.data.size(); ++i) {
-                int x = i % grid_map.info.width;
-                int y = grid_map.info.height - 1 - (i / grid_map.info.width);
-                binary_image.at<uchar>(y, x) = (grid_map.data[i] >= occupancy_threshold_) ? 255 : 0;
+            for (int y = 0; y < grid_map.info.height; ++y) {
+                for (int x = 0; x < grid_map.info.width; ++x) {
+                    int i = y * grid_map.info.width + x;
+                    int v = grid_map.data[i];
+                    // Free (0) → trắng (255), Occupied (100) và Unknown (-1) → đen (0)
+                    if (v == 0) {
+                        binary_image.at<uchar>(grid_map.info.height - 1 - y, x) = 255;
+                    } else {
+                        binary_image.at<uchar>(grid_map.info.height - 1 - y, x) = 0;
+                    }
+                }
             }
-            RCLCPP_INFO(this->get_logger(), "Converted to binary image");
+            RCLCPP_INFO(this->get_logger(), "Converted OccupancyGrid to binary image");
         } catch (const cv::Exception &e) {
             RCLCPP_ERROR(this->get_logger(), "OpenCV error in binary conversion: %s", e.what());
             return;
