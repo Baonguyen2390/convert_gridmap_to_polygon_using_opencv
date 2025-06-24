@@ -12,63 +12,66 @@
 
 #include <gridmap_to_polygon/gridmap_to_polygon.h>
 
-GridMapToPolygonConverter::GridMapToPolygonConverter()
-    : Node("gridmap_to_polygon")
-    {
-        // Khai báo các tham số
-        declare_parameter("map_topic", "/map");
-        declare_parameter("use_file_input", false);
-        declare_parameter("map_yaml_path", "");
-        declare_parameter("map_pgm_path", "");
-        declare_parameter("occupancy_threshold", 50);
-        declare_parameter("min_polygon_area", 0.5);
-        declare_parameter("simplify_tolerance", 2.0);
-        declare_parameter("min_area", 100);
-        declare_parameter("publish_frame_id", "map");
+GridMapToPolygonConverter::GridMapToPolygonConverter() {}
 
-        // Lấy giá trị tham số
-        get_parameter("map_topic", map_topic_);
-        get_parameter("use_file_input", use_file_input_);
-        get_parameter("map_yaml_path", map_yaml_path_);
-        get_parameter("map_pgm_path", map_pgm_path_);
-        get_parameter("occupancy_threshold", occupancy_threshold_);
-        get_parameter("min_polygon_area", min_polygon_area_);
-        get_parameter("simplify_tolerance", simplify_tolerance_);
-        get_parameter("min_area", min_area_);
-        get_parameter("publish_frame_id", publish_frame_id_);
+GridMapToPolygonConverter::GridMapToPolygonConverter(rclcpp::Node::SharedPtr parentNode)
+{
+    parentNode_ = parentNode;
 
-        // In giá trị tham số để kiểm tra
-        RCLCPP_INFO(this->get_logger(), "Parameter use_file_input: %s", use_file_input_ ? "true" : "false");
-        RCLCPP_INFO(this->get_logger(), "Parameter map_yaml_path: %s", map_yaml_path_.c_str());
-        RCLCPP_INFO(this->get_logger(), "Parameter map_pgm_path: %s", map_pgm_path_.c_str());
+    // Khai báo các tham số
+    parentNode_->declare_parameter("map_topic", "/map");
+    parentNode_->declare_parameter("use_file_input", false);
+    parentNode_->declare_parameter("map_yaml_path", "");
+    parentNode_->declare_parameter("map_pgm_path", "");
+    parentNode_->declare_parameter("occupancy_threshold", 50);
+    parentNode_->declare_parameter("min_polygon_area", 0.5);
+    parentNode_->declare_parameter("simplify_tolerance", 2.0);
+    parentNode_->declare_parameter("min_area", 100);
+    parentNode_->declare_parameter("publish_frame_id", "map");
 
-        // Khởi tạo publishers
-        outer_polygon_pub_ = create_publisher<geometry_msgs::msg::PolygonStamped>("outer_polygons", 10);
-        inner_polygon_pub_ = create_publisher<geometry_msgs::msg::PolygonStamped>("inner_polygons", 10);
+    // Lấy giá trị tham số
+    parentNode_->get_parameter("map_topic", map_topic_);
+    parentNode_->get_parameter("use_file_input", use_file_input_);
+    parentNode_->get_parameter("map_yaml_path", map_yaml_path_);
+    parentNode_->get_parameter("map_pgm_path", map_pgm_path_);
+    parentNode_->get_parameter("occupancy_threshold", occupancy_threshold_);
+    parentNode_->get_parameter("min_polygon_area", min_polygon_area_);
+    parentNode_->get_parameter("simplify_tolerance", simplify_tolerance_);
+    parentNode_->get_parameter("min_area", min_area_);
+    parentNode_->get_parameter("publish_frame_id", publish_frame_id_);
 
-        // Nếu sử dụng file input, đọc map từ file
-        if (use_file_input_) {
-            RCLCPP_INFO(this->get_logger(), "Using file input mode.");
-            loadMapFromFile();
-        } else {
-            auto qos = rclcpp::QoS(rclcpp::KeepLast(10));
-            qos.reliable();
-            qos.transient_local();
-            map_sub_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
-                map_topic_, qos,
-                std::bind(&GridMapToPolygonConverter::mapCallback, this, std::placeholders::_1));
-            RCLCPP_INFO(this->get_logger(), "Subscribed to topic: %s with QoS: reliable, transient_local, depth 10", map_topic_.c_str());
-        }
+    // In giá trị tham số để kiểm tra
+    RCLCPP_INFO(parentNode_->get_logger(), "Parameter use_file_input: %s", use_file_input_ ? "true" : "false");
+    RCLCPP_INFO(parentNode_->get_logger(), "Parameter map_yaml_path: %s", map_yaml_path_.c_str());
+    RCLCPP_INFO(parentNode_->get_logger(), "Parameter map_pgm_path: %s", map_pgm_path_.c_str());
 
-        RCLCPP_INFO(this->get_logger(), "GridMap to Polygon Converter initialized.");
+    // Khởi tạo publishers
+    outer_polygon_pub_ = parentNode_->create_publisher<geometry_msgs::msg::PolygonStamped>("outer_polygons", 10);
+    inner_polygon_pub_ = parentNode_->create_publisher<geometry_msgs::msg::PolygonStamped>("inner_polygons", 10);
+
+    // Nếu sử dụng file input, đọc map từ file
+    if (use_file_input_) {
+        RCLCPP_INFO(parentNode_->get_logger(), "Using file input mode.");
+        loadMapFromFile();
+    } else {
+        auto qos = rclcpp::QoS(rclcpp::KeepLast(10));
+        qos.reliable();
+        qos.transient_local();
+        map_sub_ = parentNode_->create_subscription<nav_msgs::msg::OccupancyGrid>(
+            map_topic_, qos,
+            std::bind(&GridMapToPolygonConverter::mapCallback, this, std::placeholders::_1));
+        RCLCPP_INFO(parentNode_->get_logger(), "Subscribed to topic: %s with QoS: reliable, transient_local, depth 10", map_topic_.c_str());
     }
+
+    RCLCPP_INFO(parentNode_->get_logger(), "GridMap to Polygon Converter initialized.");
+}
 
 void GridMapToPolygonConverter::mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg)
 {
-    RCLCPP_INFO(this->get_logger(), "Received map data with width: %d, height: %d, data size: %zu",
+    RCLCPP_INFO(parentNode_->get_logger(), "Received map data with width: %d, height: %d, data size: %zu",
                 msg->info.width, msg->info.height, msg->data.size());
     if (msg->data.size() != static_cast<size_t>(msg->info.width * msg->info.height)) {
-        RCLCPP_ERROR(this->get_logger(), "Data size mismatch: expected %d, got %zu",
+        RCLCPP_ERROR(parentNode_->get_logger(), "Data size mismatch: expected %d, got %zu",
                         msg->info.width * msg->info.height, msg->data.size());
         return;
     }
@@ -78,7 +81,7 @@ void GridMapToPolygonConverter::mapCallback(const nav_msgs::msg::OccupancyGrid::
 void GridMapToPolygonConverter::loadMapFromFile()
 {
     try {
-        RCLCPP_INFO(this->get_logger(), "Loading map from YAML: %s", map_yaml_path_.c_str());
+        RCLCPP_INFO(parentNode_->get_logger(), "Loading map from YAML: %s", map_yaml_path_.c_str());
         YAML::Node config = YAML::LoadFile(map_yaml_path_);
         std::string image_path = config["image"].as<std::string>();
         float resolution = config["resolution"].as<float>();
@@ -86,7 +89,7 @@ void GridMapToPolygonConverter::loadMapFromFile()
 
         cv::Mat pgm_image = cv::imread(map_pgm_path_, cv::IMREAD_GRAYSCALE);
         if (pgm_image.empty()) {
-            RCLCPP_ERROR(this->get_logger(), "Failed to load PGM file: %s", map_pgm_path_.c_str());
+            RCLCPP_ERROR(parentNode_->get_logger(), "Failed to load PGM file: %s", map_pgm_path_.c_str());
             return;
         }
 
@@ -105,10 +108,10 @@ void GridMapToPolygonConverter::loadMapFromFile()
             }
         }
 
-        RCLCPP_INFO(this->get_logger(), "Loaded map with width: %d, height: %d", pgm_image.cols, pgm_image.rows);
+        RCLCPP_INFO(parentNode_->get_logger(), "Loaded map with width: %d, height: %d", pgm_image.cols, pgm_image.rows);
         processGridMap(grid_map);
     } catch (const std::exception &e) {
-        RCLCPP_ERROR(this->get_logger(), "Error loading map file: %s", e.what());
+        RCLCPP_ERROR(parentNode_->get_logger(), "Error loading map file: %s", e.what());
     }
 }
 
@@ -129,7 +132,7 @@ cv::Mat GridMapToPolygonConverter::removeNoise(const cv::Mat &binary_image)
 
 void GridMapToPolygonConverter::processGridMap(const nav_msgs::msg::OccupancyGrid &grid_map)
 {
-    RCLCPP_INFO(this->get_logger(), "Processing map with %zu data points", grid_map.data.size());
+    RCLCPP_INFO(parentNode_->get_logger(), "Processing map with %zu data points", grid_map.data.size());
 
     // Chuyển grid map thành ảnh nhị phân
     cv::Mat binary_image(grid_map.info.height, grid_map.info.width, CV_8UC1);
@@ -146,9 +149,9 @@ void GridMapToPolygonConverter::processGridMap(const nav_msgs::msg::OccupancyGri
                 }
             }
         }
-        RCLCPP_INFO(this->get_logger(), "Converted OccupancyGrid to binary image");
+        RCLCPP_INFO(parentNode_->get_logger(), "Converted OccupancyGrid to binary image");
     } catch (const cv::Exception &e) {
-        RCLCPP_ERROR(this->get_logger(), "OpenCV error in binary conversion: %s", e.what());
+        RCLCPP_ERROR(parentNode_->get_logger(), "OpenCV error in binary conversion: %s", e.what());
         return;
     }
 
@@ -157,7 +160,7 @@ void GridMapToPolygonConverter::processGridMap(const nav_msgs::msg::OccupancyGri
 
     // Lọc nhiễu
     binary_image = removeNoise(binary_image);
-    RCLCPP_INFO(this->get_logger(), "Applied noise removal with min_area %d", min_area_);
+    RCLCPP_INFO(parentNode_->get_logger(), "Applied noise removal with min_area %d", min_area_);
 
     // Lưu ảnh sau lọc nhiễu
     cv::imwrite("/home/nguyen/binary_filtered_output.png", binary_image);
@@ -167,12 +170,12 @@ void GridMapToPolygonConverter::processGridMap(const nav_msgs::msg::OccupancyGri
     std::vector<cv::Vec4i> hierarchy;
     try {
         cv::findContours(binary_image, contours, hierarchy, cv::RETR_CCOMP, cv::CHAIN_APPROX_SIMPLE);
-        RCLCPP_INFO(this->get_logger(), "Found %zu contours", contours.size());
+        RCLCPP_INFO(parentNode_->get_logger(), "Found %zu contours", contours.size());
         if (contours.empty()) {
-            RCLCPP_WARN(this->get_logger(), "No contours found in the binary image");
+            RCLCPP_WARN(parentNode_->get_logger(), "No contours found in the binary image");
         }
     } catch (const cv::Exception &e) {
-        RCLCPP_ERROR(this->get_logger(), "OpenCV error in findContours: %s", e.what());
+        RCLCPP_ERROR(parentNode_->get_logger(), "OpenCV error in findContours: %s", e.what());
         return;
     }
 
@@ -185,10 +188,10 @@ void GridMapToPolygonConverter::processGridMap(const nav_msgs::msg::OccupancyGri
         // Log diện tích của tất cả contours
         bool is_outer = hierarchy[i][3] == -1;
         std::string kind = is_outer ? "OUTER" : "INNER";
-        RCLCPP_INFO(this->get_logger(), "[%s] Contour %zu: area = %.1f", kind.c_str(), i, area);
+        RCLCPP_INFO(parentNode_->get_logger(), "[%s] Contour %zu: area = %.1f", kind.c_str(), i, area);
 
         if (area < min_polygon_area_) {
-            RCLCPP_INFO(this->get_logger(), "Skipping contour %zu due to area (%.1f) < min_polygon_area (%.1f)", i, area, min_polygon_area_);
+            RCLCPP_INFO(parentNode_->get_logger(), "Skipping contour %zu due to area (%.1f) < min_polygon_area (%.1f)", i, area, min_polygon_area_);
             continue;
         }
 
@@ -196,9 +199,9 @@ void GridMapToPolygonConverter::processGridMap(const nav_msgs::msg::OccupancyGri
         std::vector<cv::Point> simplified_contour;
         try {
             cv::approxPolyDP(contours[i], simplified_contour, simplify_tolerance_, true);
-            RCLCPP_INFO(this->get_logger(), "Simplified contour %zu to %zu points", i, simplified_contour.size());
+            RCLCPP_INFO(parentNode_->get_logger(), "Simplified contour %zu to %zu points", i, simplified_contour.size());
         } catch (const cv::Exception &e) {
-            RCLCPP_ERROR(this->get_logger(), "OpenCV error in approxPolyDP: %s", e.what());
+            RCLCPP_ERROR(parentNode_->get_logger(), "OpenCV error in approxPolyDP: %s", e.what());
             continue;
         }
 
@@ -209,7 +212,7 @@ void GridMapToPolygonConverter::processGridMap(const nav_msgs::msg::OccupancyGri
         // Chuyển thành PolygonStamped
         geometry_msgs::msg::PolygonStamped polygon_msg;
         polygon_msg.header.frame_id = publish_frame_id_;
-        polygon_msg.header.stamp = this->now();
+        polygon_msg.header.stamp = parentNode_->now();
 
         for (const auto &point : simplified_contour) {
             geometry_msgs::msg::Point32 polygon_point;
@@ -221,10 +224,10 @@ void GridMapToPolygonConverter::processGridMap(const nav_msgs::msg::OccupancyGri
         // Xuất bản polygon trên topic tương ứng
         if (is_outer) {
             outer_polygon_pub_->publish(polygon_msg);
-            RCLCPP_INFO(this->get_logger(), "Published OUTER polygon with %zu points on topic /outer_polygons", simplified_contour.size());
+            RCLCPP_INFO(parentNode_->get_logger(), "Published OUTER polygon with %zu points on topic /outer_polygons", simplified_contour.size());
         } else {
             inner_polygon_pub_->publish(polygon_msg);
-            RCLCPP_INFO(this->get_logger(), "Published INNER polygon with %zu points on topic /inner_polygons", simplified_contour.size());
+            RCLCPP_INFO(parentNode_->get_logger(), "Published INNER polygon with %zu points on topic /inner_polygons", simplified_contour.size());
         }
     }
 

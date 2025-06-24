@@ -13,10 +13,11 @@
 #include <memory>
 #include <algorithm>
 
-class GridMapToPolygonConverter : public rclcpp::Node
+class GridMapToPolygonConverter
 {
 public:
     GridMapToPolygonConverter();
+    GridMapToPolygonConverter(rclcpp::Node::SharedPtr parentNode);
 
 private:
     void mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg);
@@ -37,6 +38,8 @@ private:
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
     rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr outer_polygon_pub_;
     rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr inner_polygon_pub_;
+
+    rclcpp::Node::SharedPtr parentNode_;
 };
 
 #endif
