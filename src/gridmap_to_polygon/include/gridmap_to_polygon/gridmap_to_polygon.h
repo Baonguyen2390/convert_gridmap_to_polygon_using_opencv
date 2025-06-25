@@ -12,18 +12,22 @@
 #include <string>
 #include <memory>
 #include <algorithm>
+#include <mutex>
 
 class GridMapToPolygonConverter
 {
 public:
     GridMapToPolygonConverter();
     GridMapToPolygonConverter(rclcpp::Node::SharedPtr parentNode);
+    std::vector<geometry_msgs::msg::Polygon> getPolygons();
+    nav_msgs::msg::OccupancyGrid getGridMap();
 
 private:
     void mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg);
     void loadMapFromFile();
     cv::Mat removeNoise(const cv::Mat &binary_image);
-    void processGridMap(const nav_msgs::msg::OccupancyGrid &grid_map);
+    std::vector<geometry_msgs::msg::Polygon> processGridMap(const nav_msgs::msg::OccupancyGrid &grid_map);
+    void updateGridMap(nav_msgs::msg::OccupancyGrid &grid_map);
 
     // Biến thành viên
     std::string map_topic_;
@@ -38,6 +42,9 @@ private:
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
     rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr outer_polygon_pub_;
     rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr inner_polygon_pub_;
+
+    std::mutex grid_map_mutex_;
+    nav_msgs::msg::OccupancyGrid::UniquePtr grid_map_;
 
     rclcpp::Node::SharedPtr parentNode_;
 };

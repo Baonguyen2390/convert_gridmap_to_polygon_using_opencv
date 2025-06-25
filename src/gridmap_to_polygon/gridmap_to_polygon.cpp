@@ -1,6 +1,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <geometry_msgs/msg/polygon_stamped.hpp>
+#include <geometry_msgs/msg/polygon.hpp>
 #include <opencv2/opencv.hpp>
 #include <opencv2/imgproc.hpp>
 #include <yaml-cpp/yaml.h>
@@ -75,7 +76,7 @@ void GridMapToPolygonConverter::mapCallback(const nav_msgs::msg::OccupancyGrid::
                         msg->info.width * msg->info.height, msg->data.size());
         return;
     }
-    processGridMap(*msg);
+    updateGridMap(*msg);
 }
 
 void GridMapToPolygonConverter::loadMapFromFile()
@@ -109,7 +110,7 @@ void GridMapToPolygonConverter::loadMapFromFile()
         }
 
         RCLCPP_INFO(parentNode_->get_logger(), "Loaded map with width: %d, height: %d", pgm_image.cols, pgm_image.rows);
-        processGridMap(grid_map);
+        updateGridMap(grid_map);
     } catch (const std::exception &e) {
         RCLCPP_ERROR(parentNode_->get_logger(), "Error loading map file: %s", e.what());
     }
@@ -130,9 +131,11 @@ cv::Mat GridMapToPolygonConverter::removeNoise(const cv::Mat &binary_image)
     return output;
 }
 
-void GridMapToPolygonConverter::processGridMap(const nav_msgs::msg::OccupancyGrid &grid_map)
+std::vector<geometry_msgs::msg::Polygon> GridMapToPolygonConverter::processGridMap(const nav_msgs::msg::OccupancyGrid &grid_map)
 {
     RCLCPP_INFO(parentNode_->get_logger(), "Processing map with %zu data points", grid_map.data.size());
+
+    std::vector<geometry_msgs::msg::Polygon> polygons;
 
     // Chuyển grid map thành ảnh nhị phân
     cv::Mat binary_image(grid_map.info.height, grid_map.info.width, CV_8UC1);
@@ -152,7 +155,7 @@ void GridMapToPolygonConverter::processGridMap(const nav_msgs::msg::OccupancyGri
         RCLCPP_INFO(parentNode_->get_logger(), "Converted OccupancyGrid to binary image");
     } catch (const cv::Exception &e) {
         RCLCPP_ERROR(parentNode_->get_logger(), "OpenCV error in binary conversion: %s", e.what());
-        return;
+        return polygons;
     }
 
     // Lưu ảnh nhị phân
@@ -176,7 +179,7 @@ void GridMapToPolygonConverter::processGridMap(const nav_msgs::msg::OccupancyGri
         }
     } catch (const cv::Exception &e) {
         RCLCPP_ERROR(parentNode_->get_logger(), "OpenCV error in findContours: %s", e.what());
-        return;
+        return polygons;
     }
 
     // Tạo ảnh để vẽ contours (tương tự polygon.py)
@@ -221,6 +224,8 @@ void GridMapToPolygonConverter::processGridMap(const nav_msgs::msg::OccupancyGri
             polygon_msg.polygon.points.push_back(polygon_point);
         }
 
+        polygons.push_back(polygon_msg.polygon);
+
         // Xuất bản polygon trên topic tương ứng
         if (is_outer) {
             outer_polygon_pub_->publish(polygon_msg);
@@ -233,4 +238,33 @@ void GridMapToPolygonConverter::processGridMap(const nav_msgs::msg::OccupancyGri
 
     // Lưu ảnh với contours
     cv::imwrite("src/gridmap_to_polygon/images/polygon_contours_output.png", vis);
+
+    return polygons;
+}
+
+std::vector<geometry_msgs::msg::Polygon> GridMapToPolygonConverter::getPolygons()
+{
+    std::vector<geometry_msgs::msg::Polygon> polygons = processGridMap(getGridMap());
+
+    // guarantee that for each polygon, first point and last point are the same
+    for(auto& polygon : polygons)
+    {
+        polygon.points.push_back(polygon.points.front());
+    }
+
+    return polygons;
+}
+
+void GridMapToPolygonConverter::updateGridMap(nav_msgs::msg::OccupancyGrid &grid_map)
+{
+    const std::lock_guard<std::mutex> lock(grid_map_mutex_);
+    grid_map_ = std::make_unique<nav_msgs::msg::OccupancyGrid>(grid_map);
+}
+
+nav_msgs::msg::OccupancyGrid GridMapToPolygonConverter::getGridMap()
+{
+    const std::lock_guard<std::mutex> lock(grid_map_mutex_);
+    
+    // get a copy of grid_map
+    return *grid_map_;
 }
