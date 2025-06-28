@@ -1,4 +1,4 @@
-gridmap_to_polygon:
+grid_map_to_polygons_node:
     ros__parameters:
       map_topic: "/map"
       use_file_input: true
